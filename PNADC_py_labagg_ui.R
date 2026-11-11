@@ -1,22 +1,14 @@
 ######################################## Libraries #####################################################################
 
-
 library(zoo)
 library(readxl)
 library(tidyverse)
 library(data.table)
-library(fixest)
 library(modelsummary)
 library(tinytable)
 library(pdftools)
-library(WeightIt)
-library(cobalt)
-library(glue)
 library(ggplot2)
-library(marginaleffects)
-library(MatchIt)
 library(tibble)
-
 
 
 ##################################### Paths ############################################################################
@@ -64,22 +56,22 @@ pnadc_q_pd = pnadc_q_pd |>
 gc()
 
 
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(bpc_main = case_when(
-    bpc %in% 1 | bpc_two %in% 1 ~ 1L,  
-    bpc_two %in% 2              ~ 0L,   
-    TRUE                        ~ NA_integer_)) %>%  
-  select(-c(bpc, bpc_two))
-gc()
-
-
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(othesoci_main = case_when(
-    othesoci     %in% 1 | othesoci_two %in% 1 ~ 1L,  
-    othesoci_two %in% 2                       ~ 0L,   
-    TRUE                                      ~ NA_integer_)) %>%  
-  select(-c(othesoci, othesoci_two))
-gc()
+# pnadc_q_pd = pnadc_q_pd |>
+#   mutate(bpc_main = case_when(
+#     bpc %in% 1 | bpc_two %in% 1 ~ 1L,  
+#     bpc_two %in% 2              ~ 0L,   
+#     TRUE                        ~ NA_integer_)) %>%  
+#   select(-c(bpc, bpc_two))
+# gc()
+# 
+# 
+# pnadc_q_pd = pnadc_q_pd |>
+#   mutate(othesoci_main = case_when(
+#     othesoci     %in% 1 | othesoci_two %in% 1 ~ 1L,  
+#     othesoci_two %in% 2                       ~ 0L,   
+#     TRUE                                      ~ NA_integer_)) %>%  
+#   select(-c(othesoci, othesoci_two))
+# gc()
 
 
 pnadc_q_pd = pnadc_q_pd |>
@@ -91,7 +83,11 @@ pnadc_q_pd = pnadc_q_pd |>
             bpc_value, 
             bpc_value_two, 
             othesoci_value, 
-            othesoci_value_two))
+            othesoci_value_two,
+            othesoci,
+            othesoci_two,
+            bpc,
+            bpc_two))
 gc()
 
 
@@ -116,7 +112,7 @@ pnadc_q_pd = pnadc_q_pd |>
          informal   = case_when(unemp == 1 & (    coalesce(priv_inf            == 1, FALSE) |
                                                   coalesce(empdom_inf          == 1, FALSE) |
                                                   coalesce(emppub_inf          == 1, FALSE) |
-                                                  coalesce(selfemp_inf_cnpj == 1, FALSE) ) ~ 1L, unemp == 1 ~ 0L, TRUE ~ NA_integer_),
+                                                  coalesce(selfemp_inf_cnpj    == 1, FALSE) ) ~ 1L, unemp == 1 ~ 0L, TRUE ~ NA_integer_),
          formal     = case_when(unemp == 1 & informal == 0L ~ 1L,
                                 unemp == 1 & informal == 1L ~ 0L, TRUE ~ NA_integer_),
          state_s     = case_when(formal   == 1L ~ 1L,
@@ -220,19 +216,14 @@ gc()
  # rm(combos, composicoes)
  # gc()
 
-############################### Creating some variables about the region of the country (capital, metropolitan region and others) ########################################
 
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(capital         = as.integer(geo_area == 1),
-         RM              = as.integer(geo_area %in% c(2,3)))
-gc()
 
 ##################################### Filters ##########################################################################
 
 ## age and hours ##
 pnadc_q_pd = pnadc_q_pd |>
   filter(age >= 25 & age < 65,
-         hours_main_e >= 20 | is.na(hours_main_e))
+         hours_main_e >= 15 | is.na(hours_main_e))
 gc()
 
 ## by year ##
@@ -267,18 +258,14 @@ pnadc_q_pd = pnadc_q_pd |>
 gc()
 
 
+
 ##################################### Selecting Key Variables ########################################
 
 pnadc_q_pd = pnadc_q_pd |>
   select(indid,
          houseid,
          date_q, 
-         state,
          state_s,
-         urban,
-         capital,
-         RM,
-         geo_area,
          weight_1y,
          weight_2y,
          weight_3y,
@@ -287,13 +274,8 @@ pnadc_q_pd = pnadc_q_pd |>
          hs,
          coll,
          age, 
-         race, 
-         gender,
          year, 
          quarter,
-         occup,
-         occupied,
-         firm_act,
          interview,
          formal, 
          informal,
@@ -304,7 +286,10 @@ pnadc_q_pd = pnadc_q_pd |>
          ui_value_main,
          wage_e,
          wage_h,
-         wage_all_e)
+         wage_all_e,
+         selfemp_tot,
+         selfemp_inf_cnpj,
+         selfemp_for_cnpj)
 gc()
 
 ########################### Dropping variables that education fell and select the max education in the panel ##############################
@@ -343,44 +328,12 @@ gc()
 #______________________________________________________________________________________________________________________
 
 
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(female          = as.integer(gender   == 2),
-         male            = as.integer(gender   == 1),
-         black           = as.integer(race     == 2),
-         urban_c         = as.integer(urban    == 1),
-         age_sqr         = age^2,
-         age_cub         = age^3,
-         age_4th         = age^4,
-         school_years    = schooling_years,
-         school_years_sqr= schooling_years^2,
-         firm_act_two    = substr(as.character(firm_act), 1, 2),
-         firm_act_five   = substr(as.character(firm_act), 1, 5),
-         date_q_f        = as.factor(date_q),
-         year_f          = as.factor(year),
-         quarter_f       = as.factor(quarter),
-         occup_f         = as.factor(occup),
-         race_f          = as.factor(race),
-         firm_act_two_f  = as.factor(firm_act_two),
-         firm_act_five_f = as.factor(firm_act_five),
-         state_f         = as.factor(state),
-         geo_area_f      = as.factor(geo_area),
-         urban_f         = as.factor(urban))
-gc()
 
 ############################################### Starting some analysis ############################################
 
-
-### Educational Shares
-
-educ_shares = pnadc_q_pd |>
-  filter(educ %in% 1:3, !is.na(weight_3y), weight_3y > 0) |>
-  summarise(share_lhs  = weighted.mean(as.integer(educ == 1), w = weight_3y),
-            share_hs   = weighted.mean(as.integer(educ == 2), w = weight_3y),
-            share_coll = weighted.mean(as.integer(educ == 3), w = weight_3y))
-print(educ_shares)
-
-
+###############################################
 ## Labor market shares: unconditional
+###############################################
 
 labor_shares = pnadc_q_pd |>
   filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
@@ -388,7 +341,6 @@ labor_shares = pnadc_q_pd |>
             share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
             share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
 print(labor_shares)
-
 
 ###############################################
 # Labor market shares by quarter
@@ -405,32 +357,115 @@ labor_shares_q = pnadc_q_pd |>
 print(labor_shares_q)
 
 
-
-## Plot of the labor market by year
-
 ###############################################
-# Labor shares evolution
+# Self-employment
 ###############################################
 
-labor_shares_q_long = labor_shares_q |>
-  pivot_longer(cols = starts_with("share_"),names_to = "labor_status",values_to = "share") |>
-  mutate(labor_status = factor(labor_status,levels = c("share_formal","share_informal","share_unemployed"),
-      labels = c("Formal","Informal","Unemployed")))
+self_employment_q = pnadc_q_pd |>
+  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(selfemp_tot == 1) |>
+  group_by(year, quarter) |>
+  summarise(share_formal     = weighted.mean(as.integer(selfemp_for_cnpj == 1), w = weight_1y),
+            share_informal   = weighted.mean(as.integer(selfemp_inf_cnpj == 1), w = weight_1y)) |>
+  mutate(time = year + (quarter - 1) / 4) |>
+  arrange(year, quarter)
+print(self_employment_q)
 
-ggplot(labor_shares_q_long,
-  aes(x = time, y = 100 * share,color = labor_status)) +
-  geom_line(linewidth = 1) +
-  scale_color_manual(values = c("Formal"     = "#21618C",
-                                "Informal"   = "#E67E22",
-                                "Unemployed" = "#C0392B")) +
-  scale_x_continuous(breaks = 2012:2019 ) +
-  labs(x = "Year",
-       y = "Share of labor force (%)",
-       color = NULL,
-       title = "Labor market composition in Brazil",
-       subtitle = "PNADC, 2012–2019") +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "bottom")
+
+
+#### ___ Plots: Labor shares evolution and Self employment ___ ####
+
+
+theme_set(theme_classic())
+ggplot()+
+  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_unemployed), linetype = "solid",  size = 1.5) +
+  scale_colour_manual(values=c("black", "red")) +
+  labs(title    = "Unemployment rate (%)",
+       caption  = "Source: PNADC - IBGE", 
+       x        = "Date (in quarters)", 
+       y        = "Unemployment rate (in %)") +
+  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+ggsave("labagg_unemp.pdf")
+
+theme_set(theme_classic())
+ggplot()+
+  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_informal), linetype = "solid",  size = 1.5) +
+  scale_colour_manual(values=c("black", "red")) +
+  labs(title    = "Informality rate (%)",
+       caption  = "Source: PNADC - IBGE", 
+       x        = "Date (in quarters)", 
+       y        = "Informality rate (%)") +
+  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+ggsave("labagg_informal.pdf")
+
+theme_set(theme_classic())
+ggplot()+
+  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_formal), linetype = "solid",  size = 1.5) +
+  scale_colour_manual(values=c("black", "red")) +
+  labs(title    = "Formality rate (%)",
+       caption  = "Source: PNADC - IBGE", 
+       x        = "Date (in quarters)", 
+       y        = "Formality rate (in %)") +
+  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+ggsave("labagg_formal.pdf")
+
+
+theme_set(theme_classic())
+ggplot()+
+  geom_line(data = self_employment_q, aes(x = time, y = 100*share_informal), linetype = "solid",  size = 1.5) +
+  scale_colour_manual(values=c("black", "red")) +
+  labs(title    = "Share of Informal Self-employment (%)",
+       caption  = "Source: PNADC - IBGE", 
+       x        = "Date (in quarters)", 
+       y        = "Informal Self-employment rate (in %)") +
+  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+ggsave("labagg_selfemp_inf.pdf")
+
+
+
+######################## Now, let's do it the analyses by educational share ######################
+
+
+### Educational Shares
+
+educ_shares = pnadc_q_pd |>
+  filter(educ %in% 1:3, !is.na(weight_3y), weight_3y > 0) |>
+  summarise(share_lhs  = weighted.mean(as.integer(educ == 1), w = weight_3y),
+            share_hs   = weighted.mean(as.integer(educ == 2), w = weight_3y),
+            share_coll = weighted.mean(as.integer(educ == 3), w = weight_3y))
+print(educ_shares)
+
+
+labor_shares_lhs = pnadc_q_pd |>
+  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(lhs == 1) |> 
+  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
+            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
+            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+print(labor_shares_lhs)
+
+
+labor_shares_hs = pnadc_q_pd |>
+  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(hs == 1) |>
+summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
+          share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
+          share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+print(labor_shares_hs)
+
+
+labor_shares_coll = pnadc_q_pd |>
+  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(coll == 1) |>
+summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
+          share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
+          share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+print(labor_shares_coll)
+
+
+
+
+############################# Now, we are going to do the analysis about UI #######################
 
 
 
