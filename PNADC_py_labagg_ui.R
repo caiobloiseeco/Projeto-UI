@@ -1,11 +1,9 @@
 ######################################## Libraries #####################################################################
 
 library(zoo)
-library(readxl)
 library(tidyverse)
 library(data.table)
 library(modelsummary)
-library(tinytable)
 library(pdftools)
 library(ggplot2)
 library(tibble)
@@ -87,13 +85,16 @@ pnadc_q_pd = pnadc_q_pd |>
             othesoci,
             othesoci_two,
             bpc,
-            bpc_two))
+            bpc_two,
+            bpc_value_main,
+            othesoci_value_main))
 gc()
 
 
 pnadc_q_pd = pnadc_q_pd |> 
   mutate(hours_main_e = coalesce(hours_main_e_one, hours_main_e_two)) %>% 
-  select(-c(hours_main_e_one, hours_main_e_two))
+  select(-c(hours_main_e_one, 
+            hours_main_e_two))
 gc()
 
 
@@ -103,22 +104,21 @@ gc()
 pnadc_q_pd = pnadc_q_pd |>
   mutate(laborforce = case_when(labor_force == 1 ~ 1L,
                                 labor_force == 2 ~ 0L, TRUE ~ NA_integer_),
-         out_lf     = case_when(labor_force == 2 ~ 1L,
-                                labor_force == 1 ~ 0L, TRUE ~ NA_integer_),
          occupied   = case_when(unemp == 1 ~ 1L,
                                 unemp == 2 ~ 0L, TRUE ~ NA_integer_),
          unempl     = case_when(unemp == 2 ~ 1L,
-                                unemp == 1 | labor_force == 2 ~ 0L, TRUE ~ NA_integer_),
+                                unemp == 1 ~ 0L, TRUE ~ NA_integer_),
          informal   = case_when(unemp == 1 & (    coalesce(priv_inf            == 1, FALSE) |
                                                   coalesce(empdom_inf          == 1, FALSE) |
                                                   coalesce(emppub_inf          == 1, FALSE) |
-                                                  coalesce(selfemp_inf_cnpj    == 1, FALSE) ) ~ 1L, unemp == 1 ~ 0L, TRUE ~ NA_integer_),
+                                                  coalesce(selfemp_inf_cnpj    == 1, FALSE) ) ~ 1L, 
+                                unemp == 1 ~ 0L, TRUE ~ NA_integer_),
          formal     = case_when(unemp == 1 & informal == 0L ~ 1L,
                                 unemp == 1 & informal == 1L ~ 0L, TRUE ~ NA_integer_),
          state_s     = case_when(formal   == 1L ~ 1L,
                                  informal == 1L ~ 2L,
                                  unempl   == 1L ~ 3L,
-                                 out_lf   == 1L ~ 4L, TRUE ~ NA_integer_))
+                                 TRUE ~ NA_integer_))
 gc()
 
 
@@ -221,6 +221,7 @@ gc()
 ##################################### Filters ##########################################################################
 
 ## age and hours ##
+
 pnadc_q_pd = pnadc_q_pd |>
   filter(age >= 25 & age < 65,
          hours_main_e >= 15 | is.na(hours_main_e))
@@ -234,10 +235,10 @@ gc()
 
 
 ## filter by interview
+
 pnadc_q_pd = pnadc_q_pd |>
   filter(interview == 1 | interview == 5)
 gc()
-
 
 ## filter by hh characteristic
 
@@ -245,18 +246,23 @@ pnadc_q_pd = pnadc_q_pd |>
   filter(charact_hh <= 14)
 gc()
 
-
 ## filter by people in the labor force
 pnadc_q_pd = pnadc_q_pd           |>
   filter(laborforce == 1)               
 gc()
 
+## filter by wage_e and earnings
 
-## filter by wage_e
 pnadc_q_pd = pnadc_q_pd |>
-  filter(wage_e > 0 | is.na(wage_e))
+  filter(wage_e > 0     | is.na(wage_e)) |> 
+  filter(ear_ind_e > 0  | is.na(ear_ind_e))
 gc()
 
+## filter by formal and UI
+
+pnadc_q_pd = pnadc_q_pd %>%
+  filter(!(ui_main == 1 & state_s == 1) | is.na(ui_main) | is.na(state_s))
+gc()
 
 
 ##################################### Selecting Key Variables ########################################
@@ -328,7 +334,6 @@ gc()
 #______________________________________________________________________________________________________________________
 
 
-
 ############################################### Starting some analysis ############################################
 
 ###############################################
@@ -336,10 +341,10 @@ gc()
 ###############################################
 
 labor_shares = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
-  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
-            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
-            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
+  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_4y),
+            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_4y),
+            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_4y))
 print(labor_shares)
 
 ###############################################
@@ -347,11 +352,11 @@ print(labor_shares)
 ###############################################
 
 labor_shares_q = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
   group_by(year, quarter) |>
-  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
-            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
-            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y)) |>
+  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_4y),
+            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_4y),
+            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_4y)) |>
   mutate(time = year + (quarter - 1) / 4) |>
   arrange(year, quarter)
 print(labor_shares_q)
@@ -362,64 +367,79 @@ print(labor_shares_q)
 ###############################################
 
 self_employment_q = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
   filter(selfemp_tot == 1) |>
   group_by(year, quarter) |>
-  summarise(share_formal     = weighted.mean(as.integer(selfemp_for_cnpj == 1), w = weight_1y),
-            share_informal   = weighted.mean(as.integer(selfemp_inf_cnpj == 1), w = weight_1y)) |>
+  summarise(share_formal     = weighted.mean(as.integer(selfemp_for_cnpj == 1), w = weight_4y),
+            share_informal   = weighted.mean(as.integer(selfemp_inf_cnpj == 1), w = weight_4y)) |>
   mutate(time = year + (quarter - 1) / 4) |>
   arrange(year, quarter)
 print(self_employment_q)
 
 
-
 #### ___ Plots: Labor shares evolution and Self employment ___ ####
 
-
-theme_set(theme_classic())
-ggplot()+
-  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_unemployed), linetype = "solid",  size = 1.5) +
-  scale_colour_manual(values=c("black", "red")) +
+ggplot(labor_shares_q, aes(x = time, y = 100*share_unemployed)) +
+  geom_line(linewidth = 1.5,color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),labels = function(x) {quarter = round((x - floor(x)) * 4) + 1
+  paste0("Q", quarter,"\n",ifelse(quarter == 2, floor(x), ""))}) +
   labs(title    = "Unemployment rate (%)",
        caption  = "Source: PNADC - IBGE", 
-       x        = "Date (in quarters)", 
-       y        = "Unemployment rate (in %)") +
-  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+       x        = "Date", 
+       y        = "Unemployment rate (%)") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(size = 10,lineheight = 1.5))
 ggsave("labagg_unemp.pdf")
 
-theme_set(theme_classic())
-ggplot()+
-  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_informal), linetype = "solid",  size = 1.5) +
-  scale_colour_manual(values=c("black", "red")) +
-  labs(title    = "Informality rate (%)",
-       caption  = "Source: PNADC - IBGE", 
-       x        = "Date (in quarters)", 
-       y        = "Informality rate (%)") +
-  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
-ggsave("labagg_informal.pdf")
-
-theme_set(theme_classic())
-ggplot()+
-  geom_line(data = labor_shares_q, aes(x = time, y = 100*share_formal), linetype = "solid",  size = 1.5) +
-  scale_colour_manual(values=c("black", "red")) +
+ggplot(labor_shares_q, aes(x = time, y = 100*share_formal)) +
+  geom_line(linewidth = 1.5,color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),labels = function(x) {quarter = round((x - floor(x)) * 4) + 1
+  paste0("Q", quarter,"\n",ifelse(quarter == 2, floor(x), ""))}) +
   labs(title    = "Formality rate (%)",
        caption  = "Source: PNADC - IBGE", 
-       x        = "Date (in quarters)", 
-       y        = "Formality rate (in %)") +
-  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
+       x        = "Date", 
+       y        = "Formality rate (%)") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(size = 10,lineheight = 1.5))
 ggsave("labagg_formal.pdf")
 
-
-theme_set(theme_classic())
-ggplot()+
-  geom_line(data = self_employment_q, aes(x = time, y = 100*share_informal), linetype = "solid",  size = 1.5) +
-  scale_colour_manual(values=c("black", "red")) +
-  labs(title    = "Share of Informal Self-employment (%)",
+ggplot(labor_shares_q, aes(x = time, y = 100*share_informal)) +
+  geom_line(linewidth = 1.5,color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),labels = function(x) {quarter = round((x - floor(x)) * 4) + 1
+  paste0("Q", quarter,"\n",ifelse(quarter == 2, floor(x), ""))}) +
+  labs(title    = "Informality rate (%)",
        caption  = "Source: PNADC - IBGE", 
-       x        = "Date (in quarters)", 
-       y        = "Informal Self-employment rate (in %)") +
-  theme(legend.title = element_blank(), text = element_text(size = 14),legend.position = c(0.2, 0.9))
-ggsave("labagg_selfemp_inf.pdf")
+       x        = "Date", 
+       y        = "Informality rate (%)") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(size = 10,lineheight = 1.5))
+ggsave("labagg_informal.pdf")
+
+
+ggplot(self_employment_q, aes(x = time, y = 100*share_informal)) +
+  geom_line(linewidth = 1.5,color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),labels = function(x) {quarter = round((x - floor(x)) * 4) + 1
+  paste0("Q", quarter,"\n",ifelse(quarter == 2, floor(x), ""))}) +
+  labs(title = "Informality rate of self-employment (%)",
+       caption = "Source: PNADC - IBGE",
+       x = "Date",
+       y = "Informal self-employment rate (%)") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(size = 10,lineheight = 1.5))
+ggsave("labagg_self_informal.pdf")
+
+
+ggplot(self_employment_q,aes(x = time, y = 100*share_formal)) +
+  geom_line(linewidth = 1.5,color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),labels = function(x) {quarter = round((x - floor(x)) * 4) + 1
+  paste0("Q", quarter,"\n",ifelse(quarter == 2, floor(x), ""))}) +
+  labs(title = "Formality Rate of self-employment (%)",
+     caption = "Source: PNADC - IBGE",
+           x = "Date",
+           y = "Formal Self-employment rate (%)") +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(size = 10,lineheight = 1.5))
+ggsave("labagg_self_formal.pdf")
 
 
 
@@ -429,37 +449,37 @@ ggsave("labagg_selfemp_inf.pdf")
 ### Educational Shares
 
 educ_shares = pnadc_q_pd |>
-  filter(educ %in% 1:3, !is.na(weight_3y), weight_3y > 0) |>
-  summarise(share_lhs  = weighted.mean(as.integer(educ == 1), w = weight_3y),
-            share_hs   = weighted.mean(as.integer(educ == 2), w = weight_3y),
-            share_coll = weighted.mean(as.integer(educ == 3), w = weight_3y))
+  filter(educ %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
+  summarise(share_lhs  = weighted.mean(as.integer(educ == 1), w = weight_4y),
+            share_hs   = weighted.mean(as.integer(educ == 2), w = weight_4y),
+            share_coll = weighted.mean(as.integer(educ == 3), w = weight_4y))
 print(educ_shares)
 
 
 labor_shares_lhs = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
   filter(lhs == 1) |> 
-  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
-            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
-            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+  summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_4y),
+            share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_4y),
+            share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_4y))
 print(labor_shares_lhs)
 
 
 labor_shares_hs = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
   filter(hs == 1) |>
-summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
-          share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
-          share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_4y),
+          share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_4y),
+          share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_4y))
 print(labor_shares_hs)
 
 
 labor_shares_coll = pnadc_q_pd |>
-  filter(state_s %in% 1:3, !is.na(weight_1y), weight_1y > 0) |>
+  filter(state_s %in% 1:3, !is.na(weight_4y), weight_4y > 0) |>
   filter(coll == 1) |>
-summarise(share_formal     = weighted.mean(as.integer(state_s == 1),w = weight_1y),
-          share_informal   = weighted.mean(as.integer(state_s == 2),w = weight_1y),
-          share_unemployed = weighted.mean(as.integer(state_s == 3),w = weight_1y))
+summarise(share_formal     = weighted.mean(as.integer(state_s == 1), w = weight_4y),
+          share_informal   = weighted.mean(as.integer(state_s == 2), w = weight_4y),
+          share_unemployed = weighted.mean(as.integer(state_s == 3), w = weight_4y))
 print(labor_shares_coll)
 
 
@@ -469,1832 +489,196 @@ print(labor_shares_coll)
 
 
 
-# Share of UI recipients working informally
+###### Share of UI recipients working formally, informally or unemployed #########
+
+
+ui_formal = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0) |>
+  summarise(share_formal = weighted.mean(as.integer(state_s == 1),   w = weight_4y),  .groups = "drop")
+print(ui_formal)
+gc()
+
+ui_informal = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0) |>
+  summarise(share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop")
+print(ui_informal)
+gc()
+
+ui_unemployment = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0) |>
+  summarise(share_unemp = weighted.mean(as.integer(state_s == 3),    w = weight_4y),   .groups = "drop")
+print(ui_unemployment)
+gc()
+
 
 ui_informal_time = pnadc_q_pd |>
-  filter(ui_main == 1,!is.na(state_s),!is.na(weight_4y),weight_4y > 0) |>
+  filter(ui_main == 1, !is.na(state_s),  !is.na(weight_4y), weight_4y > 0) |>
   group_by(year, quarter) |>
-  summarise(n_ui = n(),
-            share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop") |>
+  summarise(share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop") |>
   mutate(time = year + (quarter - 1) / 4)
 gc()
 
-ggplot(ui_informal_time,aes(x = time, y = 100*share_informal)) +
-  geom_line(linewidth = 0.9, color = "red") +
-  geom_point(size = 1.5, color = "red") +
-  labs(x     = "Year",
-       y     = "UI recipients working informally (%)",
-       title = "Share of UI takers in the Informal Sector",
-    subtitle = "Share among all individuals collecting UI") +
-  theme_minimal(base_size = 12)
+
+
+ggplot(ui_informal_time, aes(x = time, y = 100 * share_informal)) +
+  geom_line(linewidth = 1.5, color = "black") +
+  scale_x_continuous(breaks = seq(2016, 2019.75, by = 0.25),
+  labels = function(x) {quarter = round((x - floor(x))*4) + 1 
+  paste0("Q", quarter, "\n",ifelse(quarter == 2, floor(x), ""))}) +
+  labs(title = "Share of UI takers in informality (%)",
+    subtitle = "By quarters",
+     caption = "Source: PNADC - IBGE",
+           x = NULL,
+           y = "Share of informal UI takers (%)") +
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(size = 16, lineheight = 1.5), plot.title = element_text(face = "bold"))
+ggsave("labagg_ui_informal.pdf",width = 9, height = 6, units = "in")
+gc()
 
 
 
-ui_labor_status = pnadc_q_pd |>
-  filter(ui_main == 1, !is.na(state_s),!is.na(weight_1y),weight_1y > 0) |>
-  mutate(labor_status = factor(state_s, levels = 1:3,labels = c("Formal","Informal","Unemployed"))) |>
-  group_by(labor_status) |>
-  summarise(n = n(),weighted_n = sum(weight_1y),.groups = "drop") |>
-  mutate(share = weighted_n / sum(weighted_n),
-     share_pct = 100 * share)
-print(ui_labor_status)
+ui_informal_lhs = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0, lhs == 1) |>
+  summarise(share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop")
+print(ui_informal_lhs)
+gc()
 
 
-ggplot(
-  ui_labor_status,
-  aes(x = labor_status, y = share_pct)
-) +
-  geom_col(fill = "#21618C", width = 0.65) +
-  geom_text(
-    aes(label = sprintf("%.1f%%", share_pct)),
-    vjust = -0.4
-  ) +
-  labs(
+ui_informal_hs = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0, hs == 1) |>
+  summarise(share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop")
+print(ui_informal_hs)
+gc()
+
+
+ui_informal_coll = pnadc_q_pd |>
+  filter(ui_main == 1, !is.na(state_s), !is.na(weight_4y), weight_4y > 0, coll == 1) |>
+  summarise(share_informal = weighted.mean(as.integer(state_s == 2), w = weight_4y),.groups = "drop")
+print(ui_informal_coll)
+gc()
+
+
+##################### Generating a dataframe to plot a bar graph ###########
+
+
+ui_informal_educ = tibble(
+  education = factor(c("All", "LHS", "HS", "COLL"),levels = c("All", "LHS", "HS", "COLL")),
+  share = 100*c(ui_informal$share_informal,
+                ui_informal_lhs$share_informal,
+                ui_informal_hs$share_informal,
+                ui_informal_coll$share_informal))
+print(ui_informal_educ)
+
+
+
+###############################################
+# Bar plot: UI recipients in informal employment
+###############################################
+
+ggplot(ui_informal_educ,aes(x = education, y = share)) +
+  geom_col(aes(fill = education),width = 0.65 ) +
+  scale_fill_manual(values = c("All" = "black","LHS" = "red","HS" = "red","COLL" = "red"),guide = "none") +
+  geom_text(aes(label = sprintf("%.1f%%", share)),vjust = -0.5,size = 4.5) +
+  scale_y_continuous(limits = c(0, 100),breaks = seq(0, 100, 10)) +
+  labs(title = "Share of UI takers in informality (%)",
+    subtitle = "All individuals and by educational level",
+    caption = "Source: PNADC - IBGE",
     x = NULL,
-    y = "Share of UI recipients (%)",
-    title = "Labor market status of UI recipients",
-    subtitle = "PNADC, 2012–2019"
-  ) +
-  theme_minimal(base_size = 12)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-########################################### Regression  - Labor Force (LF) #####################################
-
-# ──  Regressions business cycle ─────────────────────────────────────────────────────────────
-# Progressive specification: each model adds a layer of fixed effects
-# so you can track how much of the raw gap is explained by composition
-
-ctrl = "age + 
-       age_sqr + 
-       age_cub + 
-       age_4th + 
-       school_years     + 
-       school_years_sqr +
-       male     +
-       black    + 
-       child_n  + 
-       teen_n   + 
-       adults_n + 
-       urban_c  + 
-       capital  + 
-       RM"
-
-fe   = "state_f + quarter_f"
-
-# Lista de fórmulas — só muda o controle de renda
-
-formulas_lf  = list("No Controls"   = glue("laborforce ~ pbf_hh_final"),
-                    "With Controls" = glue("laborforce ~ pbf_hh_final + {ctrl} + ear_group_hh_pc_pg_post | {fe}")) 
-
-formulas_oc  = list("No Controls"   = glue("occupied   ~ pbf_hh_final" ),
-                    "With Controls" = glue("occupied   ~ pbf_hh_final + {ctrl} + ear_group_hh_pc_pg_post | {fe}")) 
-
-formulas_un  = list("No Controls"   = glue("unempl     ~ pbf_hh_final" ),
-                    "With Controls" = glue("unempl     ~ pbf_hh_final + {ctrl} + ear_group_hh_pc_pg_post | {fe}")) 
-
-formulas_for = list("No Controls"   = glue("formal     ~ pbf_hh_final"),
-                    "With Controls" = glue("formal     ~ pbf_hh_final + {ctrl} + ear_group_hh_pc_pg_post | {fe}")) 
-
-formulas_inf = list("No Controls"   = glue("informal   ~ pbf_hh_final"),
-                    "With Controls" = glue("informal   ~ pbf_hh_final + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-
-# Roda todas de uma vez → lista de modelos
-regs_lf_pbf  = map(formulas_lf,  ~ feols(as.formula(.x),  data = pnadc_q_pd,            cluster = ~indid, split = ~year))
-regs_oc_pbf  = map(formulas_oc,  ~ feols(as.formula(.x),  data = pnadc_u_pbf_case1  ,   cluster = ~indid, split = ~year))
-regs_un_pbf  = map(formulas_un,  ~ feols(as.formula(.x),  data = pnadc_u_pbf_case1  ,   cluster = ~indid, split = ~year))
-regs_inf_pbf = map(formulas_inf, ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case1,   cluster = ~indid, split = ~year))
-regs_for_pbf = map(formulas_for, ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case1,   cluster = ~indid, split = ~year))
-gc()
-
-etable(regs_inf_pbf)
-
-
-# modelsummary(regs_lf_pbf,
-#              title = "Probabilidade de estar na LF - PBF",
-#              stars    = c("*" = 0.1, "**" = 0.05, "***" = 0.01),
-#              coef_map = c(
-#                "age"              = "Age"   ,
-#                "age_sqr"          = "Age^2" ,
-#                "age_cub"          = "Age^3" ,
-#                "age_4th"          = "Age^4" ,
-#                "male"             = "Male"  ,
-#                "black"            = "Black" ,
-#                "urban_c"          = "Urban" ,
-#                "capital"          = "Capital",
-#                "RM"               = "RM",
-#                "school_years"     = "Years of Study",
-#                "school_years_sqr" = "Years of Study^2",
-#                "hs"               = "High school",
-#                "coll"             = "College",
-#                "child_n"          = "N. children",
-#                "teen_n"           = "N. teens",
-#                "adults_n"         = "N. adults",
-#                "ear_hh_e_exante_pbf_pc_post" = "Log HH inc. p.c. (ex-PBF)",
-#                "ear_group_1_hh_pc_pg_post" = "Log Group 1 HH inc. p.c. (ex-PBF)",
-#                "year::2012:pbf_hh" = "PBF x 2012",
-#                "year::2013:pbf_hh" = "PBF x 2013",
-#                "year::2014:pbf_hh" = "PBF x 2014",
-#                "year::2015:pbf_hh" = "PBF x 2015",
-#                "year::2016:pbf_hh" = "PBF x 2016",
-#                "year::2017:pbf_hh" = "PBF x 2017",
-#                "year::2018:pbf_hh" = "PBF x 2018",
-#                "year::2019:pbf_hh" = "PBF x 2019",
-#                "year::2020:pbf_hh" = "PBF x 2020",
-#                "year::2021:pbf_hh" = "PBF x 2021",
-#                "year::2022:pbf_hh" = "PBF x 2022",
-#                "year::2023:pbf_hh" = "PBF x 2023",
-#                "year::2024:pbf_hh" = "PBF x 2024",
-#                "year::2025:pbf_hh" = "PBF x 2025"),
-#              gof_map  = list(
-#                list(raw = "nobs",          clean = "Observations", fmt = 0),
-#                list(raw = "r.squared",     clean = "R2",           fmt = 3),
-#                list(raw = "adj.r.squared", clean = "Adj. R2",      fmt = 3),
-#                list(raw = "FE: year_f"   , clean = "Year FE",      fmt = NULL),
-#                list(raw = "FE: quarter_f", clean = "Quarter FE",   fmt = NULL),
-#                list(raw = "FE: race_f",    clean = "Race FE",      fmt = NULL),
-#                list(raw = "FE: state_f",   clean = "State FE",     fmt = NULL),
-#                list(raw = "FE: geo_area_f",clean = "City FE",      fmt = NULL),
-#                list(raw = "FE: urban_f",   clean = "Urban FE",     fmt = NULL))) |> 
-#   group_tt(j = list("No Controls"  = 2, 
-#                     "All Controls" = 3,
-#                     "All Controls + HH Income" = 4))
-
-
-#################################### Graph Coefficients Labor Force (LF) ###################################################
-
-
-
-extract_coef_split <- function(m, regname, coef_name = "pbf_hh_final") {
-  
-  model_info <- fixest::models(m)
-  model_list <- as.list(m)
-  
-  stopifnot(nrow(model_info) == length(model_list))
-  
-  map2_dfr(
-    model_list,
-    model_info$sample,
-    function(modelo_ano, ano_i) {
-      
-      resultado <- broom::tidy(modelo_ano, conf.int = TRUE) |>
-        filter(term == coef_name)
-      
-      if (nrow(resultado) == 0) {
-        
-        return(
-          tibble(
-            year      = as.integer(as.character(ano_i)),
-            estimate  = NA_real_,
-            conf.low  = NA_real_,
-            conf.high = NA_real_,
-            version   = regname
-          )
-        )
-        
-      } else {
-        
-        resultado |>
-          transmute(
-            year      = as.integer(as.character(ano_i)),
-            estimate  = estimate,
-            conf.low  = conf.low,
-            conf.high = conf.high,
-            version   = regname
-          )
-      }
-    }
-  )
-}
-
-# ── 1. Rótulos: name = chave em formulas_lf, value = texto do gráfico ──────
-rotulos <- c("No Controls"    = "No Controls","With Controls"  = "With Controls")
-
-
-organiza_coeficientes <- function(regs) {imap_dfr(regs,~ extract_coef_split(m = .x,regname = .y,coef_name = "pbf_hh_final")) |>
-    mutate(version = factor(version,
-                            levels = names(rotulos),
-                            labels = unname(rotulos)))}
-
-# ── 2. Extração já automática via imap_dfr ───────────────────────────────────
-coef_lf_pbf  = organiza_coeficientes(regs_lf_pbf)
-coef_un_pbf  = organiza_coeficientes(regs_un_pbf)
-coef_oc_pbf  = organiza_coeficientes(regs_oc_pbf)
-coef_for_pbf = organiza_coeficientes(regs_for_pbf)
-coef_inf_pbf = organiza_coeficientes(regs_inf_pbf)
-
-gc()
-
-# ── 3. Gráfico — idêntico ao seu, sem nenhuma mudança ───────────────────────
-ggplot(coef_lf_pbf, aes(year, estimate, color = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.3, linewidth = 0.4,
-                position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
-  labs(title    = "Probability of being in the Labor Force",
-       subtitle = "PBF Beneficiary vs. Non-Beneficiary (in p.p.)",
-       x = NULL, y = NULL, color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave("prob_lf_pbf.pdf", width = 11, height = 7, device = cairo_pdf)
-
-
-ggplot(coef_un_pbf, aes(year, estimate, color = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.3, linewidth = 0.4,
-                position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
-  labs(title    = "Probability of being Unemployed",
-       subtitle = "PBF Beneficiary vs. Non-Beneficiary (in p.p.)",
-       x = NULL, y = NULL, color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave("prob_un_pbf.pdf", width = 11, height = 7, device = cairo_pdf)
-
-
-ggplot(coef_oc_pbf, aes(year, estimate, color = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.3, linewidth = 0.4,
-                position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.25)) +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
-  labs(title    = "Probability of being Employed",
-       subtitle = "PBF Beneficiary vs. Non-Beneficiary (in p.p.)",
-       x = NULL, y = NULL, color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave("prob_oc_pbf.pdf", width = 11, height = 7, device = cairo_pdf)
-
-
-ggplot(coef_for_pbf, aes(year, estimate, color = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.3, linewidth = 0.4,
-                position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.25)) +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
-  labs(title    = "Probability of being in the Formal Sector",
-       subtitle = "PBF Beneficiary vs. Non-Beneficiary (in p.p.)",
-       x = NULL, y = NULL, color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave("prob_for_pbf.pdf", width = 11, height = 7, device = cairo_pdf)
-
-
-ggplot(coef_inf_pbf, aes(year, estimate, color = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high),
-                width = 0.3, linewidth = 0.4,
-                position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE)) +
-  labs(title    = "Probability of being in the Informal Sector",
-       subtitle = "PBF Beneficiary vs. Non-Beneficiary (in p.p.)",
-       x = NULL, y = NULL, color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave("prob_inf_pbf.pdf", width = 11, height = 7, device = cairo_pdf)
-
-
-
-################################################## Now, we are going to see the interaction between PBF and the labor market in the next interview (interview 5) ##################################################
-
-
-pnadc_q_pd = pnadc_q_pd             |>
-  arrange(indid, date_q, interview) |>
-  group_by(indid)                   |>
-  mutate(next_interview = lead(interview),
-         state_s_5  = if_else(interview == 1 & next_interview == 5, dplyr::lead(state_s),      NA_integer_),
-         pbf_hh_5   = if_else(interview == 1 & next_interview == 5, dplyr::lead(pbf_hh_final), NA_integer_),
-         pbf_ind_5  = if_else(interview == 1 & next_interview == 5, dplyr::lead(pbf_main),     NA_integer_)) |>
-  ungroup()
-gc()
-
-
-
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(formal_5    = case_when(state_s_5 == 1            ~ 1,
-                                 state_s_5 %in% c(2, 3, 4) ~ 0,
-                                 TRUE ~ NA_integer_),
-         informal_5   = case_when(state_s_5 == 2            ~ 1,
-                                  state_s_5 %in% c(1, 3, 4) ~ 0,
-                                  TRUE ~ NA_integer_),
-         unempl_5     = case_when(state_s_5 == 3            ~ 1,
-                                  state_s_5 %in% c(1, 2, 4) ~ 0,
-                                  TRUE ~ NA_integer_), 
-         out_lf_5     = case_when(state_s_5 == 4            ~ 1,
-                                  state_s_5 %in% c(1, 2, 3) ~ 0,
-                                  TRUE ~ NA_integer_),
-         laborforce_5 = case_when(state_s_5 %in% c(1, 2, 3) ~ 1,
-                                  state_s_5 == 4            ~ 0,
-                                  TRUE ~ NA_integer_),
-         occupied_5   = case_when(state_s_5 %in% c(1, 2)    ~ 1,
-                                  state_s_5 == 3            ~ 0,
-                                  state_s_5 == 4            ~ NA_integer_,
-                                  TRUE ~ NA_integer_))
-gc()
-
-
-
-pnadc_q_pd = pnadc_q_pd |>
-  mutate(pbf_informal         = pbf_hh_final * informal,
-         pbf_formal           = pbf_hh_final * formal,
-         pbf_unempl           = pbf_hh_final * unempl,  
-         pbf_laborforce       = pbf_hh_final * laborforce)
-gc()
-
-
-
-######################################### Redoing the groups #############################################################
-
-pnadc_q_pd_case2 = pnadc_q_pd                  |>
-  filter(interview == 1, !is.na(state_s_5))
-gc()
-
-pnadc_u_pbf_case2 = pnadc_q_pd_case2           |>
-  filter(laborforce == 1, laborforce_5 == 1)               
-gc()
-
-pnadc_occ_pbf_case2 = pnadc_q_pd_case2         |>
-  filter(occupied == 1, occupied_5 == 1)   
-gc()
-
-
-########################## Now, we are going to see the interaction between PBF and the labor market in the next interview (interview 5) ##########################
-
-ctrl = "age             + 
-       age_sqr          + 
-       age_cub          + 
-       age_4th          + 
-       school_years     + 
-       school_years_sqr +
-       male             +
-       black            + 
-       child_n          + 
-       teen_n           + 
-       adults_n         + 
-       urban_c          + 
-       capital          + 
-       RM"
-
-fe   = "state_f + quarter_f"
-
-
-formulas_lf_next         = list("No Controls"   = glue("laborforce_5 ~ pbf_hh_final + laborforce + pbf_laborforce"),
-                                "With Controls" = glue("laborforce_5 ~ pbf_hh_final + laborforce + pbf_laborforce + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_unempl_next     = list("No Controls"   = glue("unempl_5 ~ pbf_hh_final + unempl + pbf_unempl"),
-                                "With Controls" = glue("unempl_5 ~ pbf_hh_final + unempl + pbf_unempl + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_for_next        = list("No Controls"   = glue("formal_5 ~ pbf_hh_final + formal + pbf_formal"),
-                                "With Controls" = glue("formal_5 ~ pbf_hh_final + formal + pbf_formal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_inf_next        = list("No Controls"   = glue("informal_5 ~ pbf_hh_final + informal + pbf_informal"),
-                                "With Controls" = glue("informal_5 ~ pbf_hh_final + informal + pbf_informal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_lf_pbf_next     = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + laborforce + pbf_laborforce"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + laborforce + pbf_laborforce + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_unempl_pbf_next = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + unempl + pbf_unempl"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + unempl + pbf_unempl + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_inf_pbf_next    = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + informal + pbf_informal"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + informal + pbf_informal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_for_pbf_next    = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + formal + pbf_formal"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + formal + pbf_formal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-regs_lf_next         = map(formulas_lf_next,      ~ feols(as.formula(.x),  data = pnadc_q_pd_case2,    cluster = ~indid, split = ~ year))
-regs_unempl_next     = map(formulas_unempl_next,  ~ feols(as.formula(.x),  data = pnadc_u_pbf_case2,   cluster = ~indid, split = ~ year))
-regs_for_next        = map(formulas_for_next,     ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-regs_inf_next        = map(formulas_inf_next,     ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-gc()
-
-
-regs_lf_pbf_next     = map(formulas_lf_pbf_next,     ~ feols(as.formula(.x),  data = pnadc_q_pd_case2,    cluster = ~indid, split = ~ year))
-regs_unempl_pbf_next = map(formulas_unempl_pbf_next, ~ feols(as.formula(.x),  data = pnadc_u_pbf_case2,   cluster = ~indid, split = ~ year))
-regs_inf_pbf_next    = map(formulas_inf_pbf_next,    ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-regs_for_pbf_next    = map(formulas_for_pbf_next,    ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-gc()
-
-
-
-###################################### Getting the coeficients ###################################################
-
-
-
-coef_lf_next_0 = purrr::imap_dfr(regs_lf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final + pbf_laborforce = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_lf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_lf_next_1 = purrr::imap_dfr(regs_lf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_lf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-coef_unempl_next_0 = purrr::imap_dfr(regs_unempl_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final + pbf_unempl = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_unempl_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_unempl_next_1 = purrr::imap_dfr(regs_unempl_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_unempl_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-coef_for_next_0 = purrr::imap_dfr(regs_for_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final + pbf_formal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_for_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_for_next_1 = purrr::imap_dfr(regs_for_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_for_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_inf_next_0 = purrr::imap_dfr(regs_inf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final + pbf_informal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_inf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_inf_next_1 = purrr::imap_dfr(regs_inf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "pbf_hh_final = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_inf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-
-######################################### Now, we are going to generate the graphs #############################################
-
-
-
-graph_lf_next_0 = ggplot(coef_lf_next_0,
-                         aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in the Labor Force",
-       subtitle = "Effect of PBF among workers who were in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_lf_next_0.pdf",plot = graph_lf_next_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_lf_next_1 = ggplot(coef_lf_next_1,
-                         aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to the Labor Force",
-       subtitle = "Effect of PBF among workers who were not in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_lf_next_1.pdf",plot = graph_lf_next_1, width = 11,height = 7,device = cairo_pdf)
-
-
-
-graph_unempl_next_0 = ggplot(coef_unempl_next_0,
-                             aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in Unemployment",
-       subtitle = "Effect of PBF among workers who were unemployed",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_unempl_next_0.pdf",plot = graph_unempl_next_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_unempl_next_1 = ggplot(coef_unempl_next_1,
-                             aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to Unemployment",
-       subtitle = "Effect of PBF among workers who were not unemployed",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_unempl_next_1.pdf",plot = graph_unempl_next_1, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_for_next_0 = ggplot(coef_for_next_0,
-                          aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in Formality",
-       subtitle = "Effect of PBF among workers who were in the Formal sector",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_for_next_0.pdf",plot = graph_for_next_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_for_next_1 = ggplot(coef_for_next_1,
-                          aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to Formality",
-       subtitle = "Effect of PBF among workers who were not in the Formal sector",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_for_next_1.pdf",plot = graph_for_next_1, width = 11,height = 7,device = cairo_pdf)
-
-
-
-graph_inf_next_0 = ggplot(coef_inf_next_0,
-                          aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in Informality",
-       subtitle = "Effect of PBF among workers who were in the Informal sector",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_inf_next_0.pdf",plot = graph_inf_next_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_inf_next_1 = ggplot(coef_inf_next_1,
-                          aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to Informality",
-       subtitle = "Effect of PBF among workers who were not in the Informal sector",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_inf_next_1.pdf",plot = graph_inf_next_1, width = 11,height = 7,device = cairo_pdf)
-
-
-####################################
-
-
-formulas_lf_pbf_next     = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + laborforce + pbf_laborforce"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + laborforce + pbf_laborforce + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_unempl_pbf_next = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + unempl + pbf_unempl"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + unempl + pbf_unempl + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_inf_pbf_next    = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + informal + pbf_informal"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + informal + pbf_informal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-formulas_for_pbf_next    = list("No Controls"   = glue("pbf_hh_5 ~ pbf_hh_final + formal + pbf_formal"),
-                                "With Controls" = glue("pbf_hh_5 ~ pbf_hh_final + formal + pbf_formal + {ctrl} + ear_group_hh_pc_pg_post | {fe}"))
-
-
-
-regs_lf_pbf_next     = map(formulas_lf_pbf_next,     ~ feols(as.formula(.x),  data = pnadc_q_pd_case2,    cluster = ~indid, split = ~ year))
-regs_unempl_pbf_next = map(formulas_unempl_pbf_next, ~ feols(as.formula(.x),  data = pnadc_u_pbf_case2,   cluster = ~indid, split = ~ year))
-regs_inf_pbf_next    = map(formulas_inf_pbf_next,    ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-regs_for_pbf_next    = map(formulas_for_pbf_next,    ~ feols(as.formula(.x),  data = pnadc_occ_pbf_case2, cluster = ~indid, split = ~ year))
-gc()
-
-
-coef_lf_next_pbf_0 = purrr::imap_dfr(regs_lf_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "laborforce + pbf_laborforce = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_lf_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_lf_next_pbf_1 = purrr::imap_dfr(regs_lf_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "laborforce = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_lf_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-
-coef_unempl_next_pbf_0 = purrr::imap_dfr(regs_unempl_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "unempl + pbf_unempl = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_unempl_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_unempl_next_pbf_1 = purrr::imap_dfr(regs_unempl_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "unempl = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_unempl_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_for_next_pbf_0 = purrr::imap_dfr(regs_for_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "formal + pbf_formal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_for_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_for_next_pbf_1 = purrr::imap_dfr(regs_for_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "formal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_for_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-coef_inf_next_pbf_0 = purrr::imap_dfr(regs_inf_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "informal + pbf_informal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_inf_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-coef_inf_next_pbf_1 = purrr::imap_dfr(regs_inf_pbf_next,\(modelos, nome_especificacao) {
-  identificacao = fixest::models(modelos)
-  purrr::map2_dfr(as.list(modelos),identificacao$sample,\(modelo, ano) {marginaleffects::hypotheses(
-    modelo,
-    hypothesis = "informal = 0",
-    vcov = TRUE,
-    df = fixest::degrees_freedom(modelo, type = "t")) |>
-      as.data.frame() |>
-      dplyr::transmute(year      = as.integer(as.character(ano)),
-                       estimate  = estimate,
-                       conf.low  = conf.low,
-                       conf.high = conf.high,
-                       std.error = std.error, p.value,version   = nome_especificacao)})}) |>
-  dplyr::mutate(version = factor(version,levels = names(regs_inf_pbf_next))) |>
-  dplyr::arrange(version, year)
-gc()
-
-
-
-########################### Now, let's compute the graphs ######################
-
-
-
-
-graph_lf_next_pbf_0 = ggplot(coef_lf_next_pbf_0,
-                             aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in the Labor Force",
-       subtitle = "Effect of PBF among workers who were in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_lf_next_pbf_0.pdf",plot = graph_lf_next_pbf_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_lf_next_pbf_1 = ggplot(coef_lf_next_pbf_1,
-                             aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to the Labor Force",
-       subtitle = "Effect of PBF among workers who were not in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_lf_next_pbf_1.pdf",plot = graph_lf_next_pbf_1, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_unempl_next_pbf_0 = ggplot(coef_unempl_next_pbf_0,
-                                 aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in the Labor Force",
-       subtitle = "Effect of PBF among workers who were in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_unempl_next_pbf_0.pdf",plot = graph_unempl_next_pbf_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_unempl_next_pbf_1 = ggplot(coef_unempl_next_pbf_1,
-                                 aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to the Labor Force",
-       subtitle = "Effect of PBF among workers who were not in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_unempl_next_pbf_1.pdf",plot = graph_unempl_next_pbf_1, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_for_next_pbf_0 = ggplot(coef_for_next_pbf_0,
-                              aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in the Labor Force",
-       subtitle = "Effect of PBF among workers who were in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_for_next_pbf_0.pdf",plot = graph_for_next_pbf_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_for_next_pbf_1 = ggplot(coef_for_next_pbf_1,
-                              aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to the Labor Force",
-       subtitle = "Effect of PBF among workers who were not in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_for_next_pbf_1.pdf",plot = graph_for_next_pbf_1, width = 11,height = 7,device = cairo_pdf)
-
-
-
-
-graph_inf_next_pbf_0 = ggplot(coef_inf_next_pbf_0,
-                              aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of staying in the Labor Force",
-       subtitle = "Effect of PBF among workers who were in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_inf_next_pbf_0.pdf",plot = graph_inf_next_pbf_0, width = 11,height = 7,device = cairo_pdf)
-
-
-graph_inf_next_pbf_1 = ggplot(coef_inf_next_pbf_1,
-                              aes(x = year, y = estimate, color = version, group = version)) +
-  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.3, linewidth = 0.4, position = position_dodge(width = 0.6)) +
-  geom_point(size = 2, position = position_dodge(width = 0.6)) +
-  scale_x_continuous(breaks = seq(2012, 2025, 1),
-                     expand = expansion(add = 0.5)) +
-  guides(color = guide_legend(ncol = 2,byrow = TRUE)) +
-  labs(title    = "Probability of going to the Labor Force",
-       subtitle = "Effect of PBF among workers who were not in the Labor Force",
-       x = NULL,
-       y = "Percentage points",
-       color = NULL) +
-  theme_classic(base_size = 13) +
-  theme(legend.position   = "bottom",
-        legend.text       = element_text(size = 9),
-        legend.key.height = unit(12, "pt"),
-        legend.margin     = margin(t = -5),
-        plot.margin       = margin(5, 12, 5, 5))
-ggsave(filename = "prob_inf_next_pbf_1.pdf",plot = graph_inf_next_pbf_1, width = 11,height = 7,device = cairo_pdf)
-
-
-
-
-
-################################################## Now, we are going to run the PSM exercise #################################
-
-
-ln_extr_pvrt_2012 = 70
-ln_extr_pvrt_2013 = 70
-ln_extr_pvrt_2014 = 77
-ln_extr_pvrt_2015 = 77
-ln_extr_pvrt_2016 = 85
-ln_extr_pvrt_2017 = 85
-ln_extr_pvrt_2018 = 89
-ln_extr_pvrt_2019 = 89
-ln_extr_pvrt_2020 = 89
-ln_extr_pvrt_2021 = 105
-ln_extr_pvrt_2022 = 105
-ln_extr_pvrt_2023 = 218
-ln_extr_pvrt_2024 = 218
-ln_extr_pvrt_2025 = 218
-ln_extr_pvrt_2026 = 218
-
-ln_pvrt_2012 = 140
-ln_pvrt_2013 = 140
-ln_pvrt_2014 = 154
-ln_pvrt_2015 = 154
-ln_pvrt_2016 = 170
-ln_pvrt_2017 = 170
-ln_pvrt_2018 = 178
-ln_pvrt_2019 = 178
-ln_pvrt_2020 = 178
-ln_pvrt_2021 = 210
-ln_pvrt_2022 = 210
-
-
-
-########################################  Let's do the PSM preparation to do the graphs #####################
-
-
-############### Preparing the base #########################
-
-pnadc_psm = pnadc_q_pd |>
-  mutate(row_id_psm = row_number()) |>
-  filter(pbf_hh_final %in% c(0, 1))
-gc()
-
-ctrl = "age             + 
-       age_sqr          + 
-       age_cub          + 
-       age_4th          + 
-       school_years     + 
-       school_years_sqr +
-       male             +
-       black            + 
-       child_n          + 
-       teen_n           + 
-       adults_n         + 
-       urban_c          + 
-       capital          + 
-       RM"
-
-fe = "state_f"
-
-
-
-################################# Running the regression ###############
-
-
-formula_pbf_psm = glue("pbf_hh_final ~ {ctrl} + ear_hh_e_exante_pbf_pc_post_ln |{fe}")
-reg_pbf_psm_logit = feglm(as.formula(formula_pbf_psm), data = pnadc_psm, family = binomial(link = "logit"), weights = ~ weight_2y, split = ~ year)
+    y = "Share of informal UI takers (%)") +
+  theme_classic(base_size = 20) +
+  theme(axis.text.x = element_text(size = 16),plot.title = element_text(face = "bold"))
+ggsave("labagg_ui_informal_educ.pdf",width = 9,height = 6)
 gc()
 
 
 
 
 
-################################# Getting the coeficients ##########################
 
 
-pnadc_psm = pnadc_psm |>
-  mutate(pscore_logit = NA_real_)
 
-models_pbf_psm_logit = as.list(reg_pbf_psm_logit)
-gc()
 
 
-for (i in seq_along(models_pbf_psm_logit)) {
-  models = models_pbf_psm_logit[[i]]
-  lines_models = fixest::obs(models)
-  pnadc_psm$pscore_logit[lines_models] = predict(models, type ="response")}   # The prediction of the model for each line in the database
-gc()
 
 
 
-#################### some check on Logit's results #############################
 
 
-pnadc_psm |>
-  group_by(year) |>
-  summarise(n = n(),
-            n_pscore         = sum(!is.na(pscore_logit)),
-            mean_pscore      = mean(pscore_logit,  na.rm = TRUE),
-            mean_pscore_pond = weighted.mean(pscore_logit, weight_2y,  na.rm = TRUE),
-            min_pscore       = min( pscore_logit,  na.rm = TRUE),
-            max_pscore       = max( pscore_logit,  na.rm = TRUE),
-            .groups      = "drop")
-
-
-
-ggplot(pnadc_psm,aes(x = pscore_logit, weight = weight_2y, fill = factor(pbf_hh_final))) +
-  geom_density(alpha = 0.35) +
-  facet_wrap(~ year, scales = "free_y") +
-  labs(x = "Propensity score Estimated - Logit",,
-       fill = "PBF",
-       title = "Propensity Score Distribution by Group") +
-  scale_fill_manual(values = c("0" = "#377EB8", "1" = "#E41A1C"),
-                    labels = c("0" = "Non-beneficiary", "1" = "Beneficiary")) +
-  theme_minimal()
 
 
 
 
-######################## Let's do the matching #######################################
 
 
-years_psm = c(2016, 2017, 2018, 2019, 2022, 2023, 2024, 2025)
 
 
-pnadc_psm = pnadc_psm |>
-  mutate(PSM_logit = NA_integer_)
-match_graph_logit = list()
 
 
-for (ano in years_psm) {
-  
-  nome_ano = as.character(ano)
-  
-  linhas_logit = which(pnadc_psm$year == ano & !is.na(pnadc_psm$pbf_hh_final) &!is.na(pnadc_psm$pscore_logit))
-  
-  dados_logit = pnadc_psm[linhas_logit, ] |>
-    transmute(tratamento = as.integer(pbf_hh_final),
-              pscore_logit = as.numeric(pscore_logit)) |>
-    as.data.frame()
-  
-  if (nrow(dados_logit) > 0 &&n_distinct(dados_logit$tratamento) == 2) {
-    
-    match_graph_logit[[nome_ano]] = MatchIt::matchit(
-      tratamento ~ pscore_logit,
-      data     = dados_logit,
-      distance = dados_logit$pscore_logit,
-      method   = "nearest",
-      estimand = "ATT",
-      ratio    = 1,
-      replace  = FALSE,
-      discard  = "both",
-      m.order  = "data")
-    
-    pnadc_psm$PSM_logit[linhas_logit] = as.integer(match_graph_logit[[nome_ano]]$weights > 0)}
-}
-gc()
-
-
-
-################################ Now, we are going to prepare the base to do the graphs of PSM ######################
-
-
-limits_pbf = tribble(~year, ~L_min_wage, ~L_pvrt, ~L_extr_pvrt,
-                     2016,  880, 170, 77,
-                     2017,  937, 170, 85,
-                     2018,  954, 178, 85,
-                     2019,  998, 178, 89,
-                     2022, 1212, 210, 100,
-                     2023, 1302, 210, 105,
-                     2024, 1412, 218, 105,
-                     2025, 1518, 218, 105) |>
-  mutate(L_min_wage_half = L_min_wage/2)
-
-pnadc_psm = pnadc_psm |>
-  select(-any_of(c("L_min_wage", "L_pvrt", "L_extr_pvrt", "L_min_wage_half"))) |>
-  left_join(limits_pbf,by = "year")
-gc()
-
-years_graph = c(2016,2017,2018,2019,2022,2023,2024,2025)
-
-base_graph = pnadc_psm       |>
-  filter(year %in% years_graph,
-         PSM_logit == 1)   |>
-  mutate(model = "Logit")  |>
-  transmute(year,
-            model,
-            pbf_hh_final,
-            ear_hh_e_exante_pbf_pc_post,
-            L_min_wage,
-            L_min_wage_half,
-            L_pvrt,
-            L_extr_pvrt) |>
-  filter(!is.na(pbf_hh_final),
-         !is.na(ear_hh_e_exante_pbf_pc_post),
-         !is.na(L_min_wage),
-         ear_hh_e_exante_pbf_pc_post <= L_min_wage)
-
-data_graph = base_graph                                                            |>
-  mutate(largura_bin = L_min_wage/20,
-         bin_x = floor(ear_hh_e_exante_pbf_pc_post/largura_bin)*largura_bin,
-         bin_center  = bin_x + largura_bin / 2)                                    |>
-  filter(bin_x < L_min_wage)                                                       |>
-  group_by(model, year, bin_x, bin_center) |>
-  summarise(probability_pbf = mean(pbf_hh_final),
-            n_bin = n(),.groups = "drop") |>
-  mutate(year = factor(year,levels = years_graph))
-gc()
-
-
-
-limits_x = ceiling(max(limits_pbf$L_min_wage)/100)*100
-
-
-
-######################## The graphs #########################################################
-
-graph_probability_pbf = ggplot(data_graph,
-                               aes(x     = bin_center,
-                                   y     = probability_pbf,
-                                   color = year,
-                                   group = year))                        +
-  geom_line(linewidth = 0.85, alpha = 0.85) +
-  geom_point(size = 2, alpha = 0.9)          +
-  scale_color_viridis_d(option = "B", begin = 0.05, end = 0.9, name = "Years") +
-  scale_x_continuous(limits = c(0, limite_x),breaks = seq(0,limite_x,by = 200),
-                     labels = label_number(decimal.mark = ",",big.mark = ".",accuracy = 1),
-                     expand = expansion(mult = c(0.01, 0.01))) +
-  scale_y_continuous(limits = c(0, 1),breaks = seq(0, 1, 0.1), labels = label_number(decimal.mark = ",",accuracy = 0.1),
-                     expand = expansion(mult = c(0, 0.03))) +
-  
-  labs(title   = "Probability of being PBF beneficiary",
-       subtitle = "By Household Per-capita Income (Ex-ante of PBF)",
-       x = "Household Per-capita Income (Ex-ante of PBF)",
-       y = "Probability") +
-  
-  guides(color = guide_legend(nrow = 2,byrow = TRUE)) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title = element_text(size = 17, face = "bold"),
-        plot.subtitle  = element_text(size = 11, margin = margin(b = 10)), panel.grid.minor = element_blank(),
-        panel.grid.major = element_line(color = "grey88", linewidth = 0.35),
-        legend.position = "inside", legend.position.inside = c(0.6,0.85), plot.caption = element_text(size = 8.5, hjust = 0, color = "grey35"))
-ggsave(filename = "psm_pbf_all_years.pdf", plot = graph_probability_pbf, width = 12, height = 7, device = cairo_pdf)
-
-graph_probability_pbf
-
-
-
-########################## Now, we are going to do the analysis by minimum wage #############################
-
-data_graph = base_graph                       |>
-  mutate(income_min_wage = ear_hh_e_exante_pbf_pc_post / L_min_wage,
-         largura_bin = 0.05,
-         bin_x       = floor(income_min_wage/largura_bin)*largura_bin,
-         bin_center  = bin_x + largura_bin/2) |>
-  filter(bin_x < 1)                           |>
-  group_by(year, bin_x, bin_center)           |>
-  summarise(probability_pbf = mean(pbf_hh_final),
-            n_bin = n(),
-            .groups = "drop") |>
-  mutate(year = factor(year,levels = years_graph))
-graph_probability_min_wage = ggplot(data_graph,
-                                    aes(x   = bin_center,
-                                        y   = probability_pbf,
-                                        color = year,
-                                        group = year)) +
-  geom_line(linewidth = 0.8,
-            alpha     = 0.9) +
-  geom_point(size = 2,
-             alpha = 0.95) +
-  scale_color_viridis_d(name = "Years", option = "B", begin = 0.05, end = 0.95) +
-  scale_x_continuous(limits = c(0, 1),breaks = seq(0, 1, 0.1),
-                     labels = label_percent(accuracy = 1, decimal.mark = ","),
-                     expand = expansion(mult = c(0.01, 0.01))) +
-  scale_y_continuous(limits  = c(0, 1),breaks = seq(0, 1, 0.1),labels = label_number(decimal.mark = ",",accuracy = 0.1),
-                     expand = expansion(mult  = c(0, 0.03))) +
-  labs(title = "Probability of being PBF beneficiary",
-       subtitle = "By household per-capita income as a percentage of the minimum wage",
-       x = "Household per-capita income Ex-ante PBF (% of the minimum wage)",
-       y = "Probability",
-       color = "Years") +
-  guides(color = guide_legend(ncol = 2, byrow = TRUE, title.position = "top",override.aes = list(linewidth = 1, size = 2.5, alpha = 1))) +
-  theme_minimal(base_size = 12) +
-  theme(plot.title       = element_text(size = 18, face = "bold",hjust = 0),
-        plot.subtitle    = element_text(size = 11,hjust = 0,margin = margin(b = 10)),
-        axis.title       = element_text(size = 11),
-        axis.text        = element_text(size = 9),
-        panel.grid.minor = element_blank(),
-        panel.grid.major = element_line(color = "grey88",linewidth = 0.35),legend.position = "inside",legend.position.inside = c(0.98, 0.98),
-        legend.justification = c("right","top"),
-        legend.direction = "vertical",
-        legend.background = element_rect(fill = scales::alpha("white", 0.85),color = NA),
-        legend.title = element_text(size = 10,face = "bold"),
-        legend.text = element_text(size = 9),
-        legend.margin = margin(t = 5,r = 7,b = 5,l = 7),
-        plot.margin = margin(10, 15, 10, 10))
-ggsave(filename = "psm_pbf_mw.pdf", plot = graph_probability_min_wage, 
-       width = 12,
-       height = 7,
-       device = cairo_pdf)
-
-
-
-data_graph = base_graph |>
-  mutate(largura_bin = L_min_wage/20,
-         bin_x = floor(ear_hh_e_exante_pbf_pc_post/largura_bin)*largura_bin,
-         bin_center = bin_x + largura_bin/2) |>
-  filter(bin_x < L_min_wage) |>
-  group_by(year, bin_x, bin_center) |>
-  summarise(probability_pbf = mean(pbf_hh_final), n_bin = n(), .groups = "drop")
-
-limite_x = ceiling(max(base_graph$L_min_wage, na.rm = TRUE)/100)*100
-graphs_by_year = list()
-
-
-
-
-
-for (ano in years_graph) {
-  data_year = data_graph |> filter(year == ano)
-  
-  graph_year = ggplot(data_year, aes(x = bin_center, y = probability_pbf)) +
-    geom_line(color = "#006D77", linewidth = 0.9) +
-    geom_point(color = "#006D77", size = 2.5) +
-    scale_x_continuous(limits = c(0, limite_x), breaks = seq(0, limite_x, 200),
-                       labels = label_number(decimal.mark = ",", big.mark = ".", accuracy = 1),
-                       expand = expansion(mult = c(0.01, 0.01))) +
-    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1),
-                       labels = label_number(decimal.mark = ",", accuracy = 0.1),
-                       expand = expansion(mult = c(0, 0.03))) +
-    labs(title = paste0("Probability of being PBF beneficiary — ", ano),
-         subtitle = "By household per-capita income (ex-ante of PBF)",
-         x = "Household per-capita income (ex-ante of PBF)",
-         y = "Probability") +
-    theme_minimal(base_size = 12) +
-    theme(plot.title = element_text(size = 17, face = "bold", hjust = 0.5),
-          plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
-          panel.grid.minor = element_blank(),
-          panel.grid.major = element_line(color = "grey88", linewidth = 0.35))
-  
-  graphs_by_year[[as.character(ano)]] = graph_year
-  
-  ggsave(filename = paste0("psm_pbf_", ano, ".pdf"),
-         plot = graph_year, width = 10, height = 6, device = cairo_pdf)
-}
-
-
-data_graph = base_graph |>
-  mutate(income_min_wage = ear_hh_e_exante_pbf_pc_post/L_min_wage,
-         largura_bin = 0.05,
-         bin_x = floor(income_min_wage/largura_bin)*largura_bin,
-         bin_center = bin_x + largura_bin/2) |>
-  filter(bin_x < 1) |>
-  group_by(year, bin_x, bin_center) |>
-  summarise(probability_pbf = mean(pbf_hh_final), n_bin = n(), .groups = "drop")
-
-graphs_min_wage_by_year = list()
-
-
-
-for (ano in years_graph) {
-  data_year = data_graph |> filter(year == ano)
-  
-  graph_year = ggplot(data_year, aes(x = bin_center, y = probability_pbf)) +
-    geom_line(color = "#006D77", linewidth = 0.9) +
-    geom_point(color = "#006D77", size = 2.5) +
-    scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1),
-                       labels = label_percent(accuracy = 1, decimal.mark = ","),
-                       expand = expansion(mult = c(0.01, 0.01))) +
-    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1),
-                       labels = label_number(decimal.mark = ",", accuracy = 0.1),
-                       expand = expansion(mult = c(0, 0.03))) +
-    labs(title = paste0("Probability of being PBF beneficiary — ", ano),
-         subtitle = "By household per-capita income as a percentage of the minimum wage",
-         x = "Household per-capita income (% of the minimum wage)",
-         y = "Probability") +
-    theme_minimal(base_size = 12) +
-    theme(plot.title = element_text(size = 17, face = "bold", hjust = 0.5),
-          plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
-          panel.grid.minor = element_blank(),
-          panel.grid.major = element_line(color = "grey88", linewidth = 0.35))
-  
-  graphs_min_wage_by_year[[as.character(ano)]] = graph_year
-  ggsave(filename = paste0("psm_mw_", ano, ".pdf"),
-         plot = graph_year, width = 10, height = 6, device = cairo_pdf)
-}
-
-
-
-
-
-
-
-
-
-################################ Now, we are going to reproduce the other figures of income ##############################
-
-
-base_formal_graph = pnadc_psm |>
-  filter(year %in% years_graph) |>
-  transmute(year, pbf = pbf_hh_final,
-            renda_exante = ear_hh_e_exante_pbf_pc_post,
-            formal_income_share = ear_hh_e_for_share,
-            L1 = L_pvrt, L2 = L_min_wage_half, L3 = L_min_wage) |>
-  filter(!is.na(pbf), !is.na(renda_exante), !is.na(formal_income_share),
-         renda_exante >= 0, renda_exante <= L3)
-
-
-data_formal_graph = base_formal_graph |>
-  mutate(largura_bin = L3/20,
-         bin_x = floor(renda_exante/largura_bin)*largura_bin,
-         bin_center = bin_x + largura_bin/2,
-         grupo_pbf = factor(pbf, levels = c(0, 1),
-                            labels = c("Non-PBF", "PBF beneficiary"))) |>
-  filter(bin_x < L3) |>
-  group_by(year, grupo_pbf, bin_x, bin_center) |>
-  summarise(formal_income_share = mean(formal_income_share),
-            n_bin = n(), .groups = "drop")
-
-cortes_formal = base_formal_graph |>
-  distinct(year, L1, L2, L3)
-
-anos_formal = sort(unique(data_formal_graph$year))
-
-for (ano in anos_formal) {
-  dados_ano = data_formal_graph |> filter(year == ano)
-  cortes_ano = base_formal_graph |> filter(year == ano) |> distinct(L1, L2, L3)
-  
-  graph_formal = ggplot(dados_ano,
-                        aes(x = bin_center, y = formal_income_share,
-                            color = grupo_pbf, group = grupo_pbf)) +
-    geom_point(size = 2.5) +
-    geom_smooth(method = "lm", formula = y ~ poly(x, 4, raw = TRUE),
-                se = FALSE, linewidth = 0.8) +
-    scale_color_manual(values = c("Non-PBF" = "#A65628",
-                                  "PBF beneficiary" = "#174A73")) +
-    scale_y_continuous(breaks = seq(0, 0.6, 0.1),
-                       labels = label_number(decimal.mark = ",", accuracy = 0.1)) +
-    coord_cartesian(xlim = c(0, cortes_ano$L3[1]), ylim = c(0, 0.9)) +
-    labs(title = paste0("Percentage of formal household income — ", ano),
-         x = "Household per-capita income (ex-ante of PBF)",
-         y = "Percentage of formal household income", color = NULL) +
-    theme_minimal(base_size = 12) +
-    theme(panel.grid.minor = element_blank(), legend.position = "bottom")
-  
-  ggsave(paste0("formal_income_share_", ano, ".pdf"),
-         plot = graph_formal, width = 8, height = 6, device = cairo_pdf)
-}
-
-
-base_informal_graph = pnadc_psm |>
-  filter(year %in% years_graph) |>
-  transmute(year, pbf = pbf_hh_final,
-            renda_exante = ear_hh_e_exante_pbf_pc_post,
-            informal_income_share = ear_hh_e_inf_share,
-            L1 = L_pvrt, L2 = L_min_wage_half, L3 = L_min_wage) |>
-  filter(!is.na(pbf), !is.na(renda_exante), !is.na(informal_income_share),
-         renda_exante >= 0, renda_exante <= L3)
-
-data_informal_graph = base_informal_graph |>
-  mutate(largura_bin = L3/20,
-         bin_x = floor(renda_exante/largura_bin)*largura_bin,
-         bin_center = bin_x + largura_bin/2,
-         grupo_pbf = factor(pbf, levels = c(0, 1),
-                            labels = c("Non-PBF", "PBF beneficiary"))) |>
-  filter(bin_x < L3) |>
-  group_by(year, grupo_pbf, bin_x, bin_center) |>
-  summarise(informal_income_share = mean(informal_income_share, na.rm = TRUE),
-            n_bin = n(), .groups = "drop")
-
-
-
-anos_informal = sort(unique(data_informal_graph$year))
-
-for (ano in anos_informal) {
-  dados_ano = data_informal_graph |> filter(year == ano)
-  cortes_ano = base_informal_graph |> filter(year == ano) |> distinct(L1, L2, L3)
-  
-  graph_informal = ggplot(dados_ano,
-                          aes(x = bin_center, y = informal_income_share,
-                              color = grupo_pbf, group = grupo_pbf)) +
-    geom_point(size = 2.5) +
-    geom_smooth(method = "lm", formula = y ~ poly(x, 4, raw = TRUE),
-                se = FALSE, linewidth = 0.8) +
-    scale_color_manual(values = c("Non-PBF" = "#A65628",
-                                  "PBF beneficiary" = "#174A73")) +
-    scale_y_continuous(breaks = seq(0, 0.6, 0.1),
-                       labels = label_number(decimal.mark = ",", accuracy = 0.1)) +
-    coord_cartesian(xlim = c(0, cortes_ano$L3[1]), ylim = c(0.1, 0.9)) +
-    labs(title = paste0("Percentage of informal household income — ", ano),
-         x = "Household per-capita income (ex-ante of PBF)",
-         y = "Percentage of informal household income", color = NULL) +
-    theme_minimal(base_size = 12) +
-    theme(panel.grid.minor = element_blank(), legend.position = "bottom")
-  
-  ggsave(paste0("informal_income_share_", ano, ".pdf"),
-         plot = graph_informal, width = 8, height = 6, device = cairo_pdf)
-}
-
-
-
-
-##################################### The last set of graphs ##################################################
-
-base_composition_graph = pnadc_psm |>
-  filter(year %in% years_graph, PSM_logit == 1) |>
-  transmute(year,
-            pbf = pbf_hh_final,
-            renda_exante = ear_hh_e_exante_pbf_pc_post,
-            formal = ear_hh_e_for_pc_post,
-            informal = ear_hh_e_inf_pc_post,
-            outras = ear_other_hh_pc,
-            pbf_income = pbf_value_pc,
-            L1 = L_pvrt,
-            L2 = L_min_wage_half,
-            L3 = L_min_wage) |>
-  filter(!is.na(pbf), !is.na(renda_exante), !is.na(L3),renda_exante >= 0, renda_exante <= L3)
-
-data_composition_graph = base_composition_graph |>
-  mutate(largura_bin = L3/20,
-         bin_x = floor(renda_exante/largura_bin)*largura_bin,
-         bin_center = bin_x + largura_bin/2,
-         grupo_pbf = factor(pbf,levels = c(0, 1),labels = c("Non-PBF", "PBF beneficiary"))) |>
-  filter(bin_x < L3) |>
-  group_by(year, grupo_pbf, bin_x, bin_center, L1, L2, L3) |>
-  summarise(
-    formal = mean(formal, na.rm = TRUE),
-    informal = mean(informal, na.rm = TRUE),
-    outras = mean(outras, na.rm = TRUE),
-    pbf_income = mean(pbf_income, na.rm = TRUE),
-    n_bin = n(),
-    .groups = "drop") |>
-  mutate(
-    formal = formal/L3,
-    informal = informal/L3,
-    outras = outras/L3,
-    pbf_income = pbf_income/L3
-  ) |>
-  pivot_longer(
-    cols = c(formal, informal, outras, pbf_income),
-    names_to = "componente",
-    values_to = "income_min_wage"
-  ) |>
-  mutate(
-    componente = factor(
-      componente,
-      levels = c("formal", "informal", "outras", "pbf_income"),
-      labels = c("Formal income", "Informal income", "Others", "PBF")
-    )
-  ) |>
-  filter(is.finite(income_min_wage))
-
-dir.create("income_composition", showWarnings = FALSE)
-
-anos_composition = sort(unique(data_composition_graph$year))
-
-for (ano in anos_composition) {
-  dados_ano = data_composition_graph |> filter(year == ano)
-  cortes_ano = dados_ano |> distinct(L1, L2, L3)
-  largura_ano = cortes_ano$L3[1]/20
-  
-  graph_composition = ggplot(
-    dados_ano,
-    aes(x = bin_center, y = income_min_wage, fill = componente)
-  ) +
-    geom_col(width = largura_ano*0.9) +
-    geom_vline(data = cortes_ano, aes(xintercept = L1),
-               inherit.aes = FALSE, color = "#E83E5B",
-               linetype = "dashed", linewidth = 0.7) +
-    geom_vline(data = cortes_ano, aes(xintercept = L2),
-               inherit.aes = FALSE, color = "#E83E5B",
-               linetype = "dashed", linewidth = 0.7) +
-    facet_wrap(~ grupo_pbf, nrow = 1) +
-    scale_fill_manual(
-      values = c(
-        "Formal income" = "#76964B",
-        "Informal income" = "#37688E",
-        "Others" = "#D22E55",
-        "PBF" = "#FF8C1A"
-      )
-    ) +
-    scale_x_continuous(
-      limits = c(0, cortes_ano$L3[1]),
-      breaks = seq(0, cortes_ano$L3[1], length.out = 6),
-      expand = expansion(mult = c(0.01, 0.02))
-    ) +
-    scale_y_continuous(
-      breaks = seq(0, 1.2, 0.2),
-      labels = label_number(decimal.mark = ",", accuracy = 0.1),
-      expand = expansion(mult = c(0, 0.03))
-    ) +
-    coord_cartesian(ylim = c(0, 1.2)) +
-    labs(
-      title = paste0("Household income composition — ", ano),
-      x = "Household per-capita income (ex-ante of PBF)",
-      y = "Income/Minimum wage",
-      fill = NULL) +
-    theme_minimal(base_size = 12) +
-    theme(panel.grid.minor = element_blank(),
-          strip.text       = element_text(size = 13, face = "bold"),
-          legend.position  = "bottom")
-  ggsave(filename = paste0("income_composition/income_composition_", ano, ".pdf"),
-         plot     = graph_composition,
-         width    = 11,
-         height   = 5.5,
-         device   = cairo_pdf)
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
